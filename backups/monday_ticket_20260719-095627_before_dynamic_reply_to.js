@@ -1,8 +1,6 @@
 import { fetch } from 'wix-fetch';
 import { getSecret } from 'wix-secrets-backend';
-import { triggeredEmails } from 'wix-crm-backend';
-import { customTrigger } from '@wix/automations';
-import { auth } from '@wix/essentials';
+import { contacts, triggeredEmails } from 'wix-crm-backend';
 
 const MONDAY_SECRET_NAME = 'MONDAY_API_KEY';
 const MONDAY_API_URL = 'https://api.monday.com/v2';
@@ -14,7 +12,8 @@ const TICKET_NUMBER_MAX = 99999999;
 const TICKET_NUMBER_ATTEMPTS = 100;
 const TICKET_PAGE_LIMIT = 500;
 const TRIGGERED_EMAIL_ID = 'VPeL0Z3';
-const SUPPORT_AUTOMATION_TRIGGER_ID = 'f6af7c3c-a858-4b7c-97a0-8e4ea8db3206';
+const SUPPORT_TRIGGERED_EMAIL_ID = 'VPlEpoP';
+const SUPPORT_EMAIL = 'supportclient@plan-t.org.il';
 const PLAN_T_SITE_URL = 'https://www.plan-t.org.il/';
 const CUSTOMER_BOARD_ID = 1988799742;
 const CUSTOMER_EMAIL_COLUMN_ID = 'contact_email';
@@ -103,9 +102,6 @@ export const invoke = async ({ payload }) => {
     mondayAuthorization,
     createdItemId,
     {
-      contactId: payload?.contactId,
-      submissionTime: payload?.submissionTime,
-      wixSubmissionId: payload?.submissionId,
       customerName,
       customerEmail: email,
       customerPhone: phone,
@@ -306,32 +302,28 @@ async function sendSupportNotificationEmailSafely(
     ticketNumber,
     issueSubject,
     issueDetails,
-    pageUrl,
-    contactId,
-    submissionTime,
-    wixSubmissionId
+    pageUrl
   },
-  runTrigger = runSupportAutomationTrigger,
+  emailContact = triggeredEmails.emailContact,
+  contactsApi = contacts,
   request = executeMondayRequest
 ) {
   try {
+    const supportContactId = await resolveSupportContactId(contactsApi);
     const notProvided = '\u05dc\u05d0 \u05e0\u05de\u05e1\u05e8';
 
-    await runTrigger({
-      triggerId: SUPPORT_AUTOMATION_TRIGGER_ID,
-      payload: {
-        submissionTime: submissionTime || new Date().toISOString(),
-        ticketNumber,
+    await emailContact(SUPPORT_TRIGGERED_EMAIL_ID, supportContactId, {
+      variables: {
+        ticketNumber: String(ticketNumber),
+        issueSubject: issueSubject || notProvided,
         customerName: customerName || notProvided,
-        pageUrl: pageUrl || notProvided,
+        customerEmail: customerEmail || notProvided,
+        customerPhone: customerPhone || notProvided,
         officeName: officeName || notProvided,
         urgency: urgency || notProvided,
         issueDetails: issueDetails || notProvided,
-        contactId: String(contactId || ''),
-        customerEmail: customerEmail || '',
-        wixSubmissionId: String(wixSubmissionId || ''),
-        phone: customerPhone || notProvided,
-        issueSubject: issueSubject || notProvided,
+        pageUrl: pageUrl || notProvided,
+        SITE_URL: PLAN_T_SITE_URL
       }
     });
     return { status: 'sent' };
@@ -359,9 +351,26 @@ async function sendSupportNotificationEmailSafely(
   }
 }
 
-async function runSupportAutomationTrigger(options) {
-  const elevatedRunTrigger = auth.elevate(customTrigger.runTrigger);
-  return elevatedRunTrigger(options);
+async function resolveSupportContactId(contactsApi) {
+  const result = await contactsApi
+    .queryContacts()
+    .eq('primaryInfo.email', SUPPORT_EMAIL)
+    .limit(2)
+    .find({ suppressAuth: true });
+  const matchingContacts = result?.items || [];
+
+  if (matchingContacts.length !== 1) {
+    throw new Error(
+      `Expected exactly one Wix contact for ${SUPPORT_EMAIL}; found ${matchingContacts.length}`
+    );
+  }
+
+  const supportContactId = String(matchingContacts[0]?._id || '').trim();
+  if (!supportContactId) {
+    throw new Error(`Wix contact for ${SUPPORT_EMAIL} is missing an ID`);
+  }
+
+  return supportContactId;
 }
 
 async function linkCustomerToTicketSafely(
