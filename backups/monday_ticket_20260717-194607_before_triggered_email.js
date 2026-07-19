@@ -1,6 +1,5 @@
 import { fetch } from 'wix-fetch';
 import { getSecret } from 'wix-secrets-backend';
-import { triggeredEmails } from 'wix-crm-backend';
 import { customTrigger } from '@wix/automations';
 import { auth } from '@wix/essentials';
 
@@ -9,13 +8,7 @@ const MONDAY_API_URL = 'https://api.monday.com/v2';
 const BOARD_ID = 5099744321;
 const GROUP_ID = 'group_mm4zp44x';
 const TICKET_NUMBER_COLUMN_ID = 'numeric_mm59qx9e';
-const TICKET_NUMBER_MIN = 10000000;
-const TICKET_NUMBER_MAX = 99999999;
-const TICKET_NUMBER_ATTEMPTS = 100;
-const TICKET_PAGE_LIMIT = 500;
-const TRIGGERED_EMAIL_ID = 'VPeL0Z3';
-const SUPPORT_AUTOMATION_TRIGGER_ID = 'f6af7c3c-a858-4b7c-97a0-8e4ea8db3206';
-const PLAN_T_SITE_URL = 'https://www.plan-t.org.il/';
+const EMAIL_TRIGGER_ID = 'f6af7c3c-a858-4b7c-97a0-8e4ea8db3206';
 const CUSTOMER_BOARD_ID = 1988799742;
 const CUSTOMER_EMAIL_COLUMN_ID = 'contact_email';
 const CUSTOMER_PHONE_COLUMN_ID = 'contact_phone';
@@ -45,7 +38,6 @@ export const invoke = async ({ payload }) => {
   const pageUrl = pickField(fields, ['כתובת URL', 'URL', 'Url', 'Page URL']);
   const urgency = normalizeUrgency(pickField(fields, ['דחיפות הפנייה', 'דחיפות', 'Urgency'])) || 'Medium';
 
-  const ticketNumber = await generateUniqueTicketNumber(mondayAuthorization);
   const columnValues = removeEmptyValues({
     text_mm4z7w7p: customerName,
     phone_mm4zny3f: phone ? { phone, countryShortName: 'IL' } : undefined,
@@ -54,9 +46,8 @@ export const invoke = async ({ payload }) => {
     text_mm4zj908: issueSubject,
     long_text_mm4z5fr0: issueDetails ? { text: issueDetails } : undefined,
     link_mm4z30wa: pageUrl ? { url: pageUrl, text: pageUrl } : undefined,
-    color_mm4zzdme: { index: 7 },
-    color_mm4ze6f3: { label: urgency },
-    [TICKET_NUMBER_COLUMN_ID]: String(ticketNumber)
+    color_mm4zzdme: { label: 'Open' },
+    color_mm4ze6f3: { label: urgency }
   });
 
   const itemName = issueSubject || customerName || payload?.submissionId || 'Service request';
@@ -87,281 +78,71 @@ export const invoke = async ({ payload }) => {
   );
 
   const createdItem = createData?.create_item;
-  const createdItemId = toSafeMondayItemId(createdItem?.id);
+  const ticketNumber = toSafeTicketNumber(createdItem?.id);
 
-  const ticketEmailResult = await sendTicketConfirmationEmailSafely(
-    mondayAuthorization,
-    createdItemId,
-    {
-      contactId: payload?.contactId,
-      customerName,
-      ticketNumber,
-      issueSubject
-    }
-  );
-  const supportEmailResult = await sendSupportNotificationEmailSafely(
-    mondayAuthorization,
-    createdItemId,
-    {
-      contactId: payload?.contactId,
-      submissionTime: payload?.submissionTime,
-      wixSubmissionId: payload?.submissionId,
-      customerName,
-      customerEmail: email,
-      customerPhone: phone,
-      officeName,
-      urgency,
-      ticketNumber,
-      issueSubject,
-      issueDetails,
-      pageUrl
-    }
-  );
+  await setMondayTicketNumber(mondayAuthorization, createdItem.id, ticketNumber);
+  await runTicketEmailAutomation(removeEmptyValues({
+    ticketNumber,
+    contactId: payload?.contactId,
+    wixSubmissionId: payload?.submissionId,
+    customerName,
+    customerEmail: email,
+    phone,
+    officeName,
+    issueSubject,
+    issueDetails,
+    pageUrl,
+    urgency,
+    submissionTime: payload?.submissionTime
+  }));
   const customerLinkResult = await linkCustomerToTicketSafely(
     mondayAuthorization,
-    createdItemId,
+    createdItem.id,
     email,
     phone
   );
 
-  console.log('Monday item created and customer confirmation processed', {
-    itemId: createdItemId,
+  console.log('Monday item created and ticket email trigger queued', {
+    itemId: createdItem.id,
     ticketNumber,
-    ticketEmailStatus: ticketEmailResult.status,
-    supportEmailStatus: supportEmailResult.status,
     customerLinkStatus: customerLinkResult.status
   });
   return {};
 };
 
-async function generateUniqueTicketNumber(
-  mondayAuthorization,
-  request = executeMondayRequest,
-  random = Math.random
-) {
-  const existingNumbers = await getExistingTicketNumbers(mondayAuthorization, request);
-  const ticketNumberRange = TICKET_NUMBER_MAX - TICKET_NUMBER_MIN + 1;
-
-  for (let attempt = 0; attempt < TICKET_NUMBER_ATTEMPTS; attempt += 1) {
-    const ticketNumber = Math.floor(random() * ticketNumberRange) + TICKET_NUMBER_MIN;
-    if (!existingNumbers.has(ticketNumber)) {
-      return ticketNumber;
-    }
-  }
-
-  throw new Error('Could not generate a unique eight-digit ticket number');
-}
-
-async function getExistingTicketNumbers(
-  mondayAuthorization,
-  request = executeMondayRequest
-) {
-  const firstPageQuery = `
-    query GetTicketNumbers($boardIds: [ID!]!, $limit: Int!, $columnIds: [String!]) {
-      boards(ids: $boardIds) {
-        items_page(limit: $limit) {
-          cursor
-          items {
-            column_values(ids: $columnIds) {
-              id
-              text
-            }
-          }
-        }
+async function setMondayTicketNumber(mondayAuthorization, itemId, ticketNumber) {
+  const mutation = `
+    mutation SetTicketNumber($boardId: ID!, $itemId: ID!, $columnId: String!, $value: String!) {
+      change_simple_column_value(
+        board_id: $boardId,
+        item_id: $itemId,
+        column_id: $columnId,
+        value: $value
+      ) {
+        id
       }
     }
   `;
-  const nextPageQuery = `
-    query GetNextTicketNumbers($cursor: String!, $limit: Int!, $columnIds: [String!]) {
-      next_items_page(cursor: $cursor, limit: $limit) {
-        cursor
-        items {
-          column_values(ids: $columnIds) {
-            id
-            text
-          }
-        }
-      }
-    }
-  `;
-  const columnIds = [TICKET_NUMBER_COLUMN_ID];
-  const firstData = await request(
+
+  await executeMondayRequest(
     mondayAuthorization,
-    firstPageQuery,
+    mutation,
     {
-      boardIds: [BOARD_ID],
-      limit: TICKET_PAGE_LIMIT,
-      columnIds
+      boardId: BOARD_ID,
+      itemId,
+      columnId: TICKET_NUMBER_COLUMN_ID,
+      value: String(ticketNumber)
     },
-    'get_ticket_numbers'
+    'change_simple_column_value'
   );
-  const firstPage = firstData?.boards?.[0]?.items_page;
-  if (!firstPage) {
-    throw new Error(`Monday did not return service-ticket board ${BOARD_ID}`);
-  }
-
-  const ticketNumbers = new Set();
-  addExistingTicketNumbers(ticketNumbers, firstPage.items);
-  const seenCursors = new Set();
-  let cursor = firstPage.cursor;
-
-  while (cursor) {
-    if (seenCursors.has(cursor)) {
-      throw new Error('Monday returned a repeated ticket-number pagination cursor');
-    }
-    seenCursors.add(cursor);
-
-    const nextData = await request(
-      mondayAuthorization,
-      nextPageQuery,
-      {
-        cursor,
-        limit: TICKET_PAGE_LIMIT,
-        columnIds
-      },
-      'get_next_ticket_numbers'
-    );
-    const nextPage = nextData?.next_items_page;
-    if (!nextPage) {
-      throw new Error('Monday did not return the next ticket-number page');
-    }
-    addExistingTicketNumbers(ticketNumbers, nextPage.items);
-    cursor = nextPage.cursor;
-  }
-
-  return ticketNumbers;
 }
 
-function addExistingTicketNumbers(ticketNumbers, items) {
-  for (const item of items || []) {
-    const rawValue = item?.column_values?.find(
-      (column) => column.id === TICKET_NUMBER_COLUMN_ID
-    )?.text;
-    const ticketNumber = Number(String(rawValue || '').replace(/,/g, '').trim());
-    if (
-      Number.isSafeInteger(ticketNumber)
-      && ticketNumber >= TICKET_NUMBER_MIN
-      && ticketNumber <= TICKET_NUMBER_MAX
-    ) {
-      ticketNumbers.add(ticketNumber);
-    }
-  }
-}
-
-async function sendTicketConfirmationEmailSafely(
-  mondayAuthorization,
-  ticketItemId,
-  { contactId, customerName, ticketNumber, issueSubject },
-  emailContact = triggeredEmails.emailContact,
-  request = executeMondayRequest
-) {
-  try {
-    const wixContactId = String(contactId || '').trim();
-    if (!wixContactId) {
-      throw new Error('Wix form payload is missing contactId');
-    }
-
-    await emailContact(TRIGGERED_EMAIL_ID, wixContactId, {
-      variables: {
-        customerName: customerName || '\u05dc\u05e7\u05d5\u05d7/\u05d4',
-        ticketNumber: String(ticketNumber),
-        issueSubject: issueSubject || '\u05e0\u05d5\u05e9\u05d0 \u05d4\u05e4\u05e0\u05d9\u05d9\u05d4',
-        SITE_URL: PLAN_T_SITE_URL
-      }
-    });
-    return { status: 'sent' };
-  } catch (error) {
-    console.error('Customer ticket confirmation email failed', {
-      itemId: ticketItemId,
-      error: error?.message || String(error)
-    });
-
-    try {
-      await createCustomerLinkAlert(
-        mondayAuthorization,
-        ticketItemId,
-        'Customer confirmation email was not sent automatically. Please send it manually and include the Monday ticket number.',
-        request
-      );
-    } catch (alertError) {
-      console.error('Could not add the email-failure alert to the Monday item', {
-        itemId: ticketItemId,
-        error: alertError?.message || String(alertError)
-      });
-    }
-
-    return { status: 'failed' };
-  }
-}
-
-async function sendSupportNotificationEmailSafely(
-  mondayAuthorization,
-  ticketItemId,
-  {
-    customerName,
-    customerEmail,
-    customerPhone,
-    officeName,
-    urgency,
-    ticketNumber,
-    issueSubject,
-    issueDetails,
-    pageUrl,
-    contactId,
-    submissionTime,
-    wixSubmissionId
-  },
-  runTrigger = runSupportAutomationTrigger,
-  request = executeMondayRequest
-) {
-  try {
-    const notProvided = '\u05dc\u05d0 \u05e0\u05de\u05e1\u05e8';
-
-    await runTrigger({
-      triggerId: SUPPORT_AUTOMATION_TRIGGER_ID,
-      payload: {
-        submissionTime: submissionTime || new Date().toISOString(),
-        ticketNumber,
-        customerName: customerName || notProvided,
-        pageUrl: pageUrl || notProvided,
-        officeName: officeName || notProvided,
-        urgency: urgency || notProvided,
-        issueDetails: issueDetails || notProvided,
-        contactId: String(contactId || ''),
-        customerEmail: customerEmail || '',
-        wixSubmissionId: String(wixSubmissionId || ''),
-        phone: customerPhone || notProvided,
-        issueSubject: issueSubject || notProvided,
-      }
-    });
-    return { status: 'sent' };
-  } catch (error) {
-    console.error('Support notification email failed', {
-      itemId: ticketItemId,
-      error: error?.message || String(error)
-    });
-
-    try {
-      await createCustomerLinkAlert(
-        mondayAuthorization,
-        ticketItemId,
-        'Support notification email was not sent automatically. The ticket was created successfully; please notify support manually and include the Monday ticket number.',
-        request
-      );
-    } catch (alertError) {
-      console.error('Could not add the support-email failure alert to the Monday item', {
-        itemId: ticketItemId,
-        error: alertError?.message || String(alertError)
-      });
-    }
-
-    return { status: 'failed' };
-  }
-}
-
-async function runSupportAutomationTrigger(options) {
-  const elevatedRunTrigger = auth.elevate(customTrigger.runTrigger);
-  return elevatedRunTrigger(options);
+async function runTicketEmailAutomation(payload) {
+  const runTrigger = auth.elevate(customTrigger.runTrigger);
+  await runTrigger({
+    triggerId: EMAIL_TRIGGER_ID,
+    payload
+  });
 }
 
 async function linkCustomerToTicketSafely(
@@ -684,12 +465,12 @@ async function executeMondayRequest(mondayAuthorization, query, variables, opera
   return result.data;
 }
 
-function toSafeMondayItemId(value) {
-  const itemId = Number(value);
-  if (!Number.isSafeInteger(itemId) || itemId <= 0) {
+function toSafeTicketNumber(value) {
+  const ticketNumber = Number(value);
+  if (!Number.isSafeInteger(ticketNumber) || ticketNumber <= 0) {
     throw new Error(`Monday returned an invalid numeric item ID: ${value}`);
   }
-  return itemId;
+  return ticketNumber;
 }
 
 function buildSubmissionLookup(payload = {}) {

@@ -29,27 +29,11 @@ Before creating a service ticket, the action reads the existing values in the
 Monday `Request Number` column across every result page. It generates an
 eight-digit number between `10000000` and `99999999` and retries if that number
 already exists. The selected value is written to Monday as part of the original
-`create_item` mutation and the same value is sent to the customer and support
-emails.
+`create_item` mutation and the same value is sent to the customer email.
 
 If a unique number cannot be selected after 100 attempts, the action stops before
 creating an item or sending an email. The number is a customer-facing reference,
 not an authentication credential.
-
-## Email Notifications
-
-After Monday creates the service-ticket item, the action starts two Wix email
-paths with the same ticket number:
-
-- Customer confirmation triggered-email template: `VPeL0Z3`, sent to the form
-  contact ID.
-- Support notification custom automation: trigger
-  `f6af7c3c-a858-4b7c-97a0-8e4ea8db3206`. The Wix automation owns the internal
-  recipient and email layout; the Velo action supplies the ticket and form data.
-
-If either email path fails, the ticket remains created and an explanatory update
-is added to the Monday item for manual handling. The Velo code does not use a
-fallback mailbox.
 
 ## Customer Linking
 
@@ -79,4 +63,4 @@ node --test tests/test_ticket_number.cjs tests/test_customer_linking.cjs
 
 ## Notes
 
-The current version normalizes Israeli phone numbers before sending them to Monday, validates email values before setting the Monday email column, strips a leading `Bearer` prefix from the Wix secret value if present, accepts Wix form labels with trailing colons, assigns a collision-checked eight-digit ticket number, sends customer and support notifications with that same number, and then attempts safe customer linking.
+The current version normalizes Israeli phone numbers before sending them to Monday, validates email values before setting the Monday email column, strips a leading `Bearer` prefix from the Wix secret value if present, accepts Wix form labels with trailing colons, assigns a collision-checked eight-digit ticket number, queues the existing Wix email automation, and then attempts safe customer linking.

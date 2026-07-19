@@ -1,8 +1,6 @@
 import { fetch } from 'wix-fetch';
 import { getSecret } from 'wix-secrets-backend';
 import { triggeredEmails } from 'wix-crm-backend';
-import { customTrigger } from '@wix/automations';
-import { auth } from '@wix/essentials';
 
 const MONDAY_SECRET_NAME = 'MONDAY_API_KEY';
 const MONDAY_API_URL = 'https://api.monday.com/v2';
@@ -14,7 +12,6 @@ const TICKET_NUMBER_MAX = 99999999;
 const TICKET_NUMBER_ATTEMPTS = 100;
 const TICKET_PAGE_LIMIT = 500;
 const TRIGGERED_EMAIL_ID = 'VPeL0Z3';
-const SUPPORT_AUTOMATION_TRIGGER_ID = 'f6af7c3c-a858-4b7c-97a0-8e4ea8db3206';
 const PLAN_T_SITE_URL = 'https://www.plan-t.org.il/';
 const CUSTOMER_BOARD_ID = 1988799742;
 const CUSTOMER_EMAIL_COLUMN_ID = 'contact_email';
@@ -99,24 +96,6 @@ export const invoke = async ({ payload }) => {
       issueSubject
     }
   );
-  const supportEmailResult = await sendSupportNotificationEmailSafely(
-    mondayAuthorization,
-    createdItemId,
-    {
-      contactId: payload?.contactId,
-      submissionTime: payload?.submissionTime,
-      wixSubmissionId: payload?.submissionId,
-      customerName,
-      customerEmail: email,
-      customerPhone: phone,
-      officeName,
-      urgency,
-      ticketNumber,
-      issueSubject,
-      issueDetails,
-      pageUrl
-    }
-  );
   const customerLinkResult = await linkCustomerToTicketSafely(
     mondayAuthorization,
     createdItemId,
@@ -128,7 +107,6 @@ export const invoke = async ({ payload }) => {
     itemId: createdItemId,
     ticketNumber,
     ticketEmailStatus: ticketEmailResult.status,
-    supportEmailStatus: supportEmailResult.status,
     customerLinkStatus: customerLinkResult.status
   });
   return {};
@@ -292,76 +270,6 @@ async function sendTicketConfirmationEmailSafely(
 
     return { status: 'failed' };
   }
-}
-
-async function sendSupportNotificationEmailSafely(
-  mondayAuthorization,
-  ticketItemId,
-  {
-    customerName,
-    customerEmail,
-    customerPhone,
-    officeName,
-    urgency,
-    ticketNumber,
-    issueSubject,
-    issueDetails,
-    pageUrl,
-    contactId,
-    submissionTime,
-    wixSubmissionId
-  },
-  runTrigger = runSupportAutomationTrigger,
-  request = executeMondayRequest
-) {
-  try {
-    const notProvided = '\u05dc\u05d0 \u05e0\u05de\u05e1\u05e8';
-
-    await runTrigger({
-      triggerId: SUPPORT_AUTOMATION_TRIGGER_ID,
-      payload: {
-        submissionTime: submissionTime || new Date().toISOString(),
-        ticketNumber,
-        customerName: customerName || notProvided,
-        pageUrl: pageUrl || notProvided,
-        officeName: officeName || notProvided,
-        urgency: urgency || notProvided,
-        issueDetails: issueDetails || notProvided,
-        contactId: String(contactId || ''),
-        customerEmail: customerEmail || '',
-        wixSubmissionId: String(wixSubmissionId || ''),
-        phone: customerPhone || notProvided,
-        issueSubject: issueSubject || notProvided,
-      }
-    });
-    return { status: 'sent' };
-  } catch (error) {
-    console.error('Support notification email failed', {
-      itemId: ticketItemId,
-      error: error?.message || String(error)
-    });
-
-    try {
-      await createCustomerLinkAlert(
-        mondayAuthorization,
-        ticketItemId,
-        'Support notification email was not sent automatically. The ticket was created successfully; please notify support manually and include the Monday ticket number.',
-        request
-      );
-    } catch (alertError) {
-      console.error('Could not add the support-email failure alert to the Monday item', {
-        itemId: ticketItemId,
-        error: alertError?.message || String(alertError)
-      });
-    }
-
-    return { status: 'failed' };
-  }
-}
-
-async function runSupportAutomationTrigger(options) {
-  const elevatedRunTrigger = auth.elevate(customTrigger.runTrigger);
-  return elevatedRunTrigger(options);
 }
 
 async function linkCustomerToTicketSafely(
