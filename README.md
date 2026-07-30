@@ -5,6 +5,16 @@ This repository stores the Wix Velo automation code used to create service-ticke
 ## Files
 
 - `monday_ticket.js` - current Wix automation action code.
+- `support_page.js` - Wix Velo page code for `/support`: topic tree, progressive
+  disclosure, real-time validation, confirmation state.
+- `backend/support.jsw` - backend web module that hands the submission to Wix
+  Forms so the existing automation keeps firing. Needs the form id and field
+  keys filled in from the editor.
+- `email_in_progress.html` - the "הקריאה בטיפול" monday automation email.
+- `reference/support_form_reference.html` - working reference implementation of
+  the target screen. Design and behaviour source of truth for the editor work.
+- `docs/wix_editor_instructions.md` - step-by-step editor and monday.com
+  instructions, verification checklist, and the "found, not fixed" list.
 - `backups/` - timestamped snapshots from the debugging and rollout process.
 
 ## Runtime Contract
@@ -69,12 +79,39 @@ action adds an explanatory update to the service-ticket item for manual handling
 Technical customer-linking failures are caught so they do not undo the already-created
 ticket or interrupt the existing email step.
 
+## Topic Tree
+
+The form classifies each ticket with a two-level tree plus a conditional
+follow-up field, per developer field spec v1.2 section 03. Values are written to
+Monday by dropdown label id rather than by string, so renaming a label on the
+board cannot silently drop the value.
+
+- `נושא` - `dropdown_mm5qsryr` (10 labels)
+- `תת-נושא` - `dropdown_mm5q7p43` (28 labels)
+- `פירוט נושא` - `dropdown_mm5q9dm4` (12 labels)
+- `מקור` - `text_mm5qwrmt`, constant `support page`
+
+The action accepts both the spec v1.2 field labels and the labels the live form
+sends today, so labels can be renamed in the editor without a breaking window.
+The legacy free-text topic column is still written alongside the dropdown so
+existing board views and automations are unaffected.
+
+Item name follows spec v1.2 section 04: topic, subtopic and office joined with a
+middle dot, falling back to the previous single-value behaviour when those
+fields are absent.
+
 ## Tests
 
 Run the behavior tests with:
 
 ```powershell
-node --test tests/test_ticket_number.cjs tests/test_customer_linking.cjs
+node --test tests/test_ticket_number.cjs tests/test_customer_linking.cjs tests/test_topic_tree.cjs
+```
+
+Or run everything:
+
+```powershell
+node --test tests/*.cjs
 ```
 
 ## Notes

@@ -1,0 +1,109 @@
+<!--
+  monday.com automation email: "הקריאה בטיפול"
+  Screen spec v3.4 section 06, phase B.
+
+  Trigger:  status changes to "בטיפול"  (column סטטוס / color_mm4zzdme)
+  Sends to: the מייל column (email_mm4zg2ya)
+
+  SUBJECT LINE — copy exactly, the wording is load-bearing:
+
+      הקריאה שלך בטיפול · פנייה מספר {ticketnumber} · Plan-T
+
+  Why "מספר" must stay immediately before the number: Make watches the support
+  mailbox and extracts the ticket from the subject using the pattern
+  "מספר <8 digits>". The subject proposed in spec v3.4 ("פנייה {מספר פנייה}")
+  has no "מספר" token, so a customer replying to that email would NOT be
+  threaded onto the ticket. This wording keeps replies filing correctly.
+
+  MERGE FIELDS — map to these board columns:
+    {ticketnumber}  numeric_mm59qx9e   (the 8-digit number, NOT Request Number)
+    {שם הלקוח}       text_mm4z7w7p
+    {נושא}           dropdown_mm5qsryr
+    {תת-נושא}        dropdown_mm5q7p43
+    {תאריך פתיחה}    date_mm52fkst
+
+  DELIBERATELY NOT MAPPED: דחיפות הפנייה (color_mm4ze6f3) and SLA
+  (date_mm4zqjta). Severity and SLA targets are internal only (spec v3.4
+  section 05) — leaving them out of the template makes accidental exposure
+  impossible rather than merely unlikely.
+
+  Sender stays the current support address. Switching to a dedicated
+  support@ sender is out of scope by decision.
+-->
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>הקריאה שלך בטיפול · Plan-T</title>
+</head>
+<!-- Table layout and inline styles: email clients ignore <style> blocks. -->
+<body style="margin:0;padding:0;background:#F5F8FB;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F5F8FB;padding:24px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:100%;background:#FFFFFF;border:1px solid #D8E1EA;border-radius:14px;overflow:hidden;font-family:Assistant,Arial,'Segoe UI',sans-serif;direction:rtl;">
+
+          <!-- brand band -->
+          <tr>
+            <td style="background:#111A33;border-bottom:3px solid #23A9E0;padding:18px 26px;">
+              <div style="color:#FFFFFF;font-weight:800;letter-spacing:.06em;font-size:15px;">
+                PLAN<span style="color:#23A9E0;">-T</span>
+              </div>
+            </td>
+          </tr>
+
+          <!-- body -->
+          <tr>
+            <td style="padding:24px 26px;color:#16213E;font-size:14.5px;line-height:1.65;">
+              <p style="margin:0 0 14px;">שלום {שם הלקוח},</p>
+              <p style="margin:0 0 14px;">הפנייה שפתחת נבחנה על ידי מנהל קשרי הלקוחות והועברה לטיפול הצוות.</p>
+
+              <!-- ticket summary -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#EEF3F8;border:1px solid #D8E1EA;border-radius:10px;margin:16px 0;">
+                <tr>
+                  <td style="padding:14px 18px;font-size:14px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td style="padding:4px 0;color:#5A6478;">מספר פנייה</td>
+                        <td style="padding:4px 0;text-align:left;font-weight:700;color:#16213E;" dir="ltr">{ticketnumber}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:4px 0;color:#5A6478;">נושא</td>
+                        <td style="padding:4px 0;text-align:left;font-weight:700;color:#16213E;">{נושא} · {תת-נושא}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:4px 0;color:#5A6478;">נפתחה בתאריך</td>
+                        <td style="padding:4px 0;text-align:left;font-weight:700;color:#16213E;">{תאריך פתיחה}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:4px 0;color:#5A6478;">סטטוס</td>
+                        <td style="padding:4px 0;text-align:left;font-weight:700;color:#16213E;">בטיפול</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:0 0 14px;">מכאן נמשיך איתך באופן אישי — מנהל קשרי הלקוחות ילווה את הקריאה ויעדכן אותך ישירות במייל או בטלפון.</p>
+              <p style="margin:0 0 14px;">יש פרטים חדשים שיכולים לעזור? אפשר להשיב למייל זה והם יצורפו לפנייה.</p>
+
+              <!-- signature -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #D8E1EA;margin-top:18px;">
+                <tr>
+                  <td style="padding-top:14px;color:#5A6478;font-size:13.5px;line-height:1.6;">
+                    בברכה,<br>
+                    צוות Plan-T · <span dir="ltr">073-3861711</span><br>
+                    שעות פעילות התמיכה: ימים א'–ה', 9:00–17:30
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

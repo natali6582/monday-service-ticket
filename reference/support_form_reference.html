@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>פתיחת קריאת שירות — Plan-T · מימוש ייחוס</title>
+<style>
+  /* ============================================================
+     Palette — spec v3.4 section 08, one to one.
+     ============================================================ */
+  :root{
+    --accent:#23A9E0;        /* cyan — action */
+    --accent-ink:#0F7FB0;    /* cyan pressed / links */
+    --navy:#111A33;          /* dark navy — top band */
+    --navy-2:#16213E;        /* navy — headings */
+    --muted:#5A6478;         /* secondary text */
+    --bg:#F5F8FB;            /* page background */
+    --crit:#CF5454;          /* required marker / errors */
+    --surface:#FFFFFF;
+    --surface-2:#EEF3F8;
+    --line:#D8E1EA;
+    --ink:#16213E;
+    --ink-soft:#3C4763;
+    --good:#2E9E6B;
+    --warn:#C98A1F;
+    --radius:8px;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    /* spec v3.4 section 08: clean Hebrew font */
+    font-family:Assistant,Heebo,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+    direction:rtl; line-height:1.65; font-size:16px;
+    padding:32px 16px 64px;
+  }
+  .ref-note{
+    max-width:820px; margin:0 auto 16px; font-size:12.5px; color:var(--muted); text-align:center;
+  }
+
+  /* single centred column, no side panel — spec v3.4 section 08 */
+  .card{
+    max-width:820px; margin:0 auto;
+    border:1px solid var(--line); border-radius:14px; overflow:hidden; background:var(--surface);
+    box-shadow:0 6px 24px rgba(17,26,51,.08);
+  }
+  .card-top{
+    background:linear-gradient(135deg,var(--navy),var(--navy-2)); color:#fff;
+    padding:22px 28px; border-bottom:3px solid var(--accent);
+  }
+  .brand{font-weight:800; letter-spacing:.06em; font-size:15px}
+  .brand span{color:var(--accent)}
+  .card-top h1{margin:10px 0 2px; font-size:26px; font-weight:800}  /* spec: 24-28px */
+  .card-top p{margin:0; font-size:13.5px; color:#9FB0C6; max-width:62ch}
+  .card-top .hours{margin-top:10px; font-size:12.5px; color:#9FB0C6}
+
+  form{padding:26px 32px 30px}
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:14px 16px}
+  @media (max-width:600px){ .grid{grid-template-columns:1fr} }
+  .field{display:flex; flex-direction:column; gap:5px}
+  .field.full{grid-column:1 / -1}
+  label{font-size:14px; font-weight:700}      /* spec: labels 14px bold */
+  label .req{color:var(--crit)}
+  .hint{font-size:12px; color:var(--muted)}
+  input,select,textarea{
+    font-family:inherit; font-size:15.5px; color:var(--ink);   /* spec: fields 15-16px */
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    padding:10px 12px; width:100%;
+  }
+  textarea{min-height:110px; resize:vertical}
+  input:focus,select:focus,textarea:focus{
+    outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent);
+  }
+  /* real-time validation: message sits under the field, shown on blur */
+  .field.invalid input,.field.invalid select,.field.invalid textarea{border-color:var(--crit)}
+  .error{display:none; font-size:12.5px; color:var(--crit); font-weight:600}
+  .field.invalid .error{display:block}
+
+  .privacy{
+    display:flex; gap:8px; align-items:flex-start; background:rgba(201,138,31,.1);
+    border-radius:var(--radius); padding:10px 12px; font-size:13px; color:var(--ink-soft);
+  }
+  .id-warn{
+    display:none; gap:8px; align-items:flex-start; background:rgba(207,84,84,.1);
+    border-radius:var(--radius); padding:10px 12px; font-size:13px; color:var(--ink-soft);
+    margin-top:8px;
+  }
+  .id-warn.on{display:flex}
+
+  button[type=submit]{
+    background:var(--accent); border:none; color:#fff; font-family:inherit;
+    font-size:16px; font-weight:700; border-radius:var(--radius);
+    padding:12px 40px; cursor:pointer; margin-top:20px;
+  }
+  button[type=submit]:hover{background:var(--accent-ink)}
+  button[type=submit]:focus-visible{outline:3px solid var(--accent-ink); outline-offset:2px}
+  button[type=submit][disabled]{opacity:.6; cursor:progress}
+
+  .confirm{display:none; padding:52px 28px; text-align:center}
+  .confirm.on{display:block}
+  .confirm .ok{
+    width:56px; height:56px; border-radius:50%; background:rgba(46,158,107,.15);
+    color:var(--good); font-size:28px; display:inline-flex; align-items:center;
+    justify-content:center; margin-bottom:14px;
+  }
+  .confirm h2{margin:0 0 10px; font-size:24px}
+  .confirm p{margin:0 auto 8px; color:var(--muted); max-width:52ch}
+
+  /* screen-reader-only live region for validation announcements */
+  .sr-only{
+    position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+    overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+  }
+</style>
+</head>
+<body>
+
+<p class="ref-note">
+  מימוש ייחוס להטמעה — תואם אפיון שדות v1.2 ואפיון מסך v3.4.
+  הטופס אינו שולח נתונים לשום מקום; הוא מגדיר את ההתנהגות, המיקרו-קופי והעיצוב המדויקים.
+</p>
+
+<div class="card">
+  <div class="card-top">
+    <div class="brand">PLAN<span>-T</span></div>
+    <h1>פתיחת קריאת שירות</h1>
+    <p>נתקלתם בתקלה או שיש לכם שאלה? מלאו את הפרטים ונפתח עבורכם קריאת שירות. בסיום תקבלו מספר פנייה למעקב, ומנהל קשרי הלקוחות שלנו ילווה אתכם באופן אישי עד לפתרון.</p>
+    <div class="hours">שעות פעילות התמיכה: ימים א'–ה', 9:00–17:30 · 073-3861711</div>
+  </div>
+
+  <form id="supportForm" novalidate>
+    <div class="grid">
+      <!-- 1 full_name -->
+      <div class="field" data-field="full_name">
+        <label for="full_name">שם מלא <span class="req" aria-hidden="true">*</span></label>
+        <input type="text" id="full_name" name="full_name" autocomplete="name" required minlength="2"
+               aria-describedby="err-full_name">
+        <span class="error" id="err-full_name">נא להזין שם מלא</span>
+      </div>
+
+      <!-- 2 office_name -->
+      <div class="field" data-field="office_name">
+        <label for="office_name">שם המשרד <span class="req" aria-hidden="true">*</span></label>
+        <input type="text" id="office_name" name="office_name" autocomplete="organization" required
+               aria-describedby="err-office_name">
+        <span class="error" id="err-office_name">נא להזין את שם המשרד</span>
+      </div>
+
+      <!-- 3 email -->
+      <div class="field" data-field="email">
+        <label for="email">מייל <span class="req" aria-hidden="true">*</span></label>
+        <input type="email" id="email" name="email" autocomplete="email" required
+               aria-describedby="hint-email err-email">
+        <span class="hint" id="hint-email">לכתובת זו יישלחו אישור הפתיחה והעדכונים על הקריאה</span>
+        <span class="error" id="err-email">כתובת המייל אינה תקינה — בדקו שיש @ וסיומת</span>
+      </div>
+
+      <!-- 4 phone -->
+      <div class="field" data-field="phone">
+        <label for="phone">טלפון <span class="req" aria-hidden="true">*</span></label>
+        <input type="tel" id="phone" name="phone" autocomplete="tel" required inputmode="tel"
+               aria-describedby="err-phone">
+        <span class="error" id="err-phone">מספר הטלפון צריך להכיל 9–10 ספרות</span>
+      </div>
+
+      <!-- 5 topic -->
+      <div class="field full" data-field="topic">
+        <label for="topic">נושא הבעיה <span class="req" aria-hidden="true">*</span></label>
+        <select id="topic" name="topic" required aria-describedby="err-topic">
+          <option value="" selected disabled>בחרו נושא…</option>
+        </select>
+        <span class="error" id="err-topic">נא לבחור מהרשימה</span>
+      </div>
+
+      <!-- 6 subtopic — hidden until a topic is chosen -->
+      <div class="field full" data-field="subtopic" id="wrap-subtopic" hidden>
+        <label for="subtopic">תת-נושא <span class="req" aria-hidden="true">*</span></label>
+        <select id="subtopic" name="subtopic" aria-describedby="err-subtopic">
+          <option value="" selected disabled>בחרו תת-נושא…</option>
+        </select>
+        <span class="error" id="err-subtopic">נא לבחור מהרשימה</span>
+      </div>
+
+      <!-- 7 topic_detail — only for the three topics that define it -->
+      <div class="field full" data-field="topic_detail" id="wrap-detail" hidden>
+        <label for="topic_detail" id="label-detail"></label>
+        <select id="topic_detail" name="topic_detail">
+          <option value="" selected disabled>בחרו מהרשימה…</option>
+        </select>
+      </div>
+
+      <!-- 8 screen_url -->
+      <div class="field full" data-field="screen_url">
+        <label for="screen_url">קישור למסך שבו נתקלתם בבעיה (URL)</label>
+        <input type="url" id="screen_url" name="screen_url" placeholder="https://…"
+               aria-describedby="hint-url">
+        <span class="hint" id="hint-url">העתיקו את הכתובת מסרגל הכתובת של הדפדפן והדביקו כאן — כך נגיע ישירות למסך הרלוונטי.</span>
+      </div>
+
+      <!-- 9 description -->
+      <div class="field full" data-field="description">
+        <label for="description">תיאור התקלה <span class="req" aria-hidden="true">*</span></label>
+        <textarea id="description" name="description" required minlength="20"
+                  placeholder="מה ניסיתם לעשות, מה קרה בפועל, והאם זה חוזר על עצמו?"
+                  aria-describedby="privacy-note err-description"></textarea>
+        <span class="error" id="err-description">נא לפרט לפחות 20 תווים — זה עוזר לנו לטפל מהר יותר</span>
+        <div class="privacy" id="privacy-note">
+          <span aria-hidden="true">⚠️</span>
+          <span>נא לא לציין שם לקוח או מספר ת״ז בתיאור. משיקולי אבטחת מידע לא ניתן לצרף קבצים — אם יידרשו, נציג יבקש אותם בערוץ מאובטח.</span>
+        </div>
+        <div class="id-warn" id="idWarn">
+          <span aria-hidden="true">🛡️</span>
+          <span>נראה שיש בתיאור רצף של 9 ספרות. אם זה מספר ת״ז — נא להסיר אותו לפני השליחה.</span>
+        </div>
+      </div>
+    </div>
+
+    <button type="submit" id="submitBtn">פתיחת קריאה</button>
+    <p class="sr-only" role="status" aria-live="polite" id="liveRegion"></p>
+  </form>
+
+  <!-- Confirmation, phase A: no ticket number on screen (locked decision).
+       The number reaches the customer in the existing confirmation email. -->
+  <div class="confirm" id="confirm">
+    <div class="ok" aria-hidden="true">✓</div>
+    <h2>הקריאה נפתחה</h2>
+    <p>פתחנו עבורכם קריאת שירות ושלחנו מייל אישור עם מספר הפנייה למעקב.</p>
+    <p>הפנייה תיבחן על ידי מנהל קשרי הלקוחות, וכשתעבור לטיפול — יישלח אליכם עדכון נוסף במייל. מכאן הליווי אישי עד לפתרון.</p>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  /* ============================================================
+     Topic tree — developer field spec v1.2 section 03, one to one.
+     The same strings are hard-coded in monday_ticket.js as the
+     label -> Monday dropdown id map. Change them in both places.
+     ============================================================ */
+  var TOPICS = [
+    { name:'טעינת קבצים וממשקים',
+      subs:['קובץ נכשל בטעינה','נתונים חסרים או שגויים לאחר טעינה','פורמט או יצרן שאינו נתמך','ממשק מסלקה / קופות','אחר'],
+      detail:{ label:'יצרן / סוג הקובץ',
+        opts:['מסלקה פנסיונית','קובץ יצרן (חברת ביטוח / בית השקעות)','קובץ בנק / ברוקר','קובץ אקסל ידני','אחר'] } },
+    { name:'הפקת דוחות',
+      subs:['הדוח לא נוצר או נתקע','נתון שגוי בדוח','עיצוב או תצוגה בדוח','ייצוא PDF / הדפסה'],
+      detail:{ label:'איזה דוח?', opts:['דוח תקופתי','דוח פנסיה פלוס','דוח תכנון','אחר'] } },
+    { name:'נתונים שגויים או חסרים',
+      subs:['שווי נכס שגוי','תשואה שגויה','נכס או חשבון חסר','שערי מטבע / מחירי נייר'],
+      detail:{ label:'סוג הנכס (ללא שם הלקוח)',
+        opts:['ני"ע סחיר','קרן / קופה פנסיונית','השקעה אלטרנטיבית','נדל"ן','אחר'] } },
+    { name:'תקלה במערכת',
+      subs:['מסך לא נטען / שגיאת מערכת','איטיות בביצועים','בעיית תצוגה'], detail:null },
+    { name:'תפעול, משתמשים והרשאות',
+      subs:['התחברות וסיסמה','הוספה / הסרה של משתמש','הרשאות וצפייה','הגדרות משרד'], detail:null },
+    { name:'פורטל לקוחות',
+      subs:['לקוח קצה לא מצליח להתחבר','תצוגה או נתונים בפורטל'], detail:null },
+    { name:'הדרכה ושאלת שימוש',
+      subs:['איך עושים…?','בקשת הדרכה למשרד'], detail:null },
+    { name:'הצעת שיפור',
+      subs:['פיצ\'ר חדש','שיפור למסך או דוח קיים'], detail:null },
+    { name:'מנוי וחיוב',
+      subs:['חשבונית / חיוב','שינוי מסלול או מספר משתמשים'], detail:null },
+    { name:'אחר', subs:['אחר'], detail:null }
+  ];
+
+  var el = function(id){ return document.getElementById(id); };
+  var topicSel = el('topic');
+  var subSel = el('subtopic');
+  var detailSel = el('topic_detail');
+  var wrapSub = el('wrap-subtopic');
+  var wrapDetail = el('wrap-detail');
+  var labelDetail = el('label-detail');
+  var form = el('supportForm');
+  var live = el('liveRegion');
+
+  function fill(select, values, placeholder){
+    select.innerHTML = '';
+    var ph = document.createElement('option');
+    ph.value = ''; ph.textContent = placeholder;
+    ph.selected = true; ph.disabled = true;
+    select.appendChild(ph);
+    values.forEach(function(v){
+      var o = document.createElement('option');
+      o.value = v; o.textContent = v;
+      select.appendChild(o);
+    });
+  }
+
+  TOPICS.forEach(function(t){
+    var o = document.createElement('option');
+    o.value = t.name; o.textContent = t.name;
+    topicSel.appendChild(o);
+  });
+
+  /* Progressive disclosure — spec v1.2 section 02.
+     Values reset on every topic change so a stale subtopic can never be sent. */
+  topicSel.addEventListener('change', function(){
+    var topic = TOPICS.find(function(t){ return t.name === topicSel.value; });
+    clearError(wrapSub);
+    if (!topic){ wrapSub.hidden = true; wrapDetail.hidden = true; return; }
+
+    fill(subSel, topic.subs, 'בחרו תת-נושא…');
+    wrapSub.hidden = false;
+    subSel.required = true;                 /* required only while visible */
+
+    if (topic.detail){
+      labelDetail.textContent = topic.detail.label;
+      fill(detailSel, topic.detail.opts, 'בחרו מהרשימה…');
+      wrapDetail.hidden = false;
+    } else {
+      wrapDetail.hidden = true;
+      detailSel.value = '';                 /* clear so nothing stale is submitted */
+    }
+    clearError(topicSel.closest('.field'));
+    live.textContent = 'נפתח שדה תת-נושא עבור ' + topic.name;
+  });
+
+  /* ---------- validation, spec v1.2 section 05 wording ---------- */
+  function digitsOf(value){ return String(value || '').replace(/\D/g, ''); }
+
+  function isValid(input){
+    var value = String(input.value || '').trim();
+    if (input.id === 'full_name')   return value.length >= 2;
+    if (input.id === 'office_name') return value.length > 0;
+    if (input.id === 'email')       return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+    if (input.id === 'phone'){
+      var d = digitsOf(value);
+      return d.length >= 9 && d.length <= 10;
+    }
+    if (input.id === 'description') return value.length >= 20;
+    if (input.id === 'topic')       return value !== '';
+    if (input.id === 'subtopic')    return wrapSub.hidden || value !== '';
+    return true;
+  }
+
+  function markError(field){ if (field) field.classList.add('invalid'); }
+  function clearError(field){ if (field) field.classList.remove('invalid'); }
+
+  var validated = ['full_name','office_name','email','phone','description','topic','subtopic'];
+  validated.forEach(function(id){
+    var input = el(id);
+    /* error appears on blur, never as a generic banner on submit */
+    input.addEventListener('blur', function(){
+      if (isValid(input)) clearError(input.closest('.field'));
+      else markError(input.closest('.field'));
+    });
+    input.addEventListener('input', function(){
+      if (isValid(input)) clearError(input.closest('.field'));
+    });
+    input.addEventListener('change', function(){
+      if (isValid(input)) clearError(input.closest('.field'));
+    });
+  });
+
+  /* Gentle Israeli-ID detection — spec v3.4 section 03 recommendation. */
+  var description = el('description');
+  var idWarn = el('idWarn');
+  description.addEventListener('input', function(){
+    var hasIdPattern = /(?:^|\D)\d{9}(?:\D|$)/.test(description.value);
+    idWarn.classList.toggle('on', hasIdPattern);
+  });
+
+  form.addEventListener('submit', function(event){
+    event.preventDefault();
+
+    var firstInvalid = null;
+    validated.forEach(function(id){
+      var input = el(id);
+      if (isValid(input)){
+        clearError(input.closest('.field'));
+      } else {
+        markError(input.closest('.field'));
+        if (!firstInvalid) firstInvalid = input;
+      }
+    });
+
+    if (firstInvalid){
+      firstInvalid.focus();
+      live.textContent = 'יש שדות שדורשים תיקון.';
+      return;
+    }
+
+    /* Reference implementation only — a real page posts the payload here. */
+    el('submitBtn').disabled = true;
+    form.style.display = 'none';
+    el('confirm').classList.add('on');
+    el('confirm').scrollIntoView({ behavior:'smooth', block:'center' });
+  });
+})();
+</script>
+</body>
+</html>
