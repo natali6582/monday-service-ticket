@@ -31,7 +31,7 @@ import { submissions } from '@wix/forms';
  * TODO(editor): paste the form id from the Wix editor. Forms > your form >
  * the id appears in the URL of the form's settings panel.
  */
-const SUPPORT_FORM_ID = 'e50568b4-92bc-4521-b6dc-1cb564a4fe47';
+const SUPPORT_FORM_ID = '';
 
 /**
  * Form field keys, NOT labels.
@@ -40,15 +40,15 @@ const SUPPORT_FORM_ID = 'e50568b4-92bc-4521-b6dc-1cb564a4fe47';
  * TODO(editor): fill each one from the editor (field > settings > field key).
  */
 const FIELD_KEYS = {
-  fullName: 'form_field',
-  officeName: 'form_field_3',
-  email: 'form_field_2',
-  phone: 'form_field_1',
-  topic: 'form_field_8',
-  subtopic: 'form_field_9',
-  topicDetail: 'form_field_10',
-  screenUrl: 'url',
-  description: 'form_field_6'
+  fullName: '',
+  officeName: '',
+  email: '',
+  phone: '',
+  topic: '',
+  subtopic: '',
+  topicDetail: '',
+  screenUrl: '',
+  description: ''
 };
 
 /**
