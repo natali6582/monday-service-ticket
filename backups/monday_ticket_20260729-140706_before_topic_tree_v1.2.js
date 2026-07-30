@@ -21,84 +21,6 @@ const CUSTOMER_EMAIL_COLUMN_ID = 'contact_email';
 const CUSTOMER_PHONE_COLUMN_ID = 'contact_phone';
 const CUSTOMER_RELATION_COLUMN_ID = 'board_relation_mm5ajg15';
 const CUSTOMER_PAGE_LIMIT = 500;
-const TOPIC_COLUMN_ID = 'dropdown_mm5qsryr';
-const SUBTOPIC_COLUMN_ID = 'dropdown_mm5q7p43';
-const TOPIC_DETAIL_COLUMN_ID = 'dropdown_mm5q9dm4';
-const SOURCE_COLUMN_ID = 'text_mm5qwrmt';
-const SOURCE_VALUE = 'support page';
-
-/**
- * Topic tree per developer field spec v1.2 section 03.
- * Values are the exact dropdown labels created on board 5099744321; the numeric
- * ids are the Monday label ids, so a future wording change on the board does not
- * silently drop the value.
- */
-const TOPIC_LABEL_IDS = {
-  'טעינת קבצים וממשקים': 1,
-  'הפקת דוחות': 2,
-  'נתונים שגויים או חסרים': 3,
-  'תקלה במערכת': 4,
-  'תפעול, משתמשים והרשאות': 5,
-  'פורטל לקוחות': 6,
-  'הדרכה ושאלת שימוש': 7,
-  'הצעת שיפור': 8,
-  'מנוי וחיוב': 9,
-  'אחר': 10
-};
-
-const SUBTOPIC_LABEL_IDS = {
-  'קובץ נכשל בטעינה': 1,
-  'נתונים חסרים או שגויים לאחר טעינה': 2,
-  'פורמט או יצרן שאינו נתמך': 3,
-  'ממשק מסלקה / קופות': 4,
-  'הדוח לא נוצר או נתקע': 5,
-  'נתון שגוי בדוח': 6,
-  'עיצוב או תצוגה בדוח': 7,
-  'ייצוא PDF / הדפסה': 8,
-  'שווי נכס שגוי': 9,
-  'תשואה שגויה': 10,
-  'נכס או חשבון חסר': 11,
-  'שערי מטבע / מחירי נייר': 12,
-  'מסך לא נטען / שגיאת מערכת': 13,
-  'איטיות בביצועים': 14,
-  'בעיית תצוגה': 15,
-  'התחברות וסיסמה': 16,
-  'הוספה / הסרה של משתמש': 17,
-  'הרשאות וצפייה': 18,
-  'הגדרות משרד': 19,
-  'לקוח קצה לא מצליח להתחבר': 20,
-  'תצוגה או נתונים בפורטל': 21,
-  'איך עושים…?': 22,
-  'בקשת הדרכה למשרד': 23,
-  'פיצ\'ר חדש': 24,
-  'שיפור למסך או דוח קיים': 25,
-  'חשבונית / חיוב': 26,
-  'שינוי מסלול או מספר משתמשים': 27,
-  'אחר': 28
-};
-
-const TOPIC_DETAIL_LABEL_IDS = {
-  'מסלקה פנסיונית': 1,
-  'קובץ יצרן (חברת ביטוח / בית השקעות)': 2,
-  'קובץ בנק / ברוקר': 3,
-  'קובץ אקסל ידני': 4,
-  'דוח תקופתי': 5,
-  'דוח פנסיה פלוס': 6,
-  'דוח תכנון': 7,
-  'ני"ע סחיר': 8,
-  'קרן / קופה פנסיונית': 9,
-  'השקעה אלטרנטיבית': 10,
-  'נדל"ן': 11,
-  'אחר': 12
-};
-
-/** The conditional follow-up field carries a different label per topic (v1.2 section 03). */
-const TOPIC_DETAIL_FIELD_LABELS = [
-  'פירוט נושא',
-  'יצרן / סוג הקובץ',
-  'איזה דוח?',
-  'סוג הנכס (ללא שם הלקוח)'
-];
 
 /**
  * Autocomplete function declaration, do not delete
@@ -119,10 +41,8 @@ export const invoke = async ({ payload }) => {
   const email = normalizeEmail(rawEmail);
   const officeName = pickField(fields, ['שם המשרד', 'Office Name', 'Office']);
   const issueSubject = pickField(fields, ['נושא הבעיה', 'Issue Subject', 'Subject']);
-  const subtopic = pickField(fields, ['תת-נושא', 'תת נושא', 'Subtopic', 'Sub Topic']);
-  const topicDetail = pickField(fields, [...TOPIC_DETAIL_FIELD_LABELS, 'Topic Detail']);
-  const issueDetails = pickField(fields, ['תיאור התקלה', 'אנא פרט על התקלה שמוצגת לך', 'פירוט התקלה', 'Issue Details', 'Details']);
-  const pageUrl = pickField(fields, ['קישור למסך שבו נתקלתם בבעיה (URL)', 'כתובת URL', 'URL', 'Url', 'Page URL']);
+  const issueDetails = pickField(fields, ['אנא פרט על התקלה שמוצגת לך', 'פירוט התקלה', 'Issue Details', 'Details']);
+  const pageUrl = pickField(fields, ['כתובת URL', 'URL', 'Url', 'Page URL']);
   const urgency = normalizeUrgency(pickField(fields, ['דחיפות הפנייה', 'דחיפות', 'Urgency'])) || 'Medium';
 
   const ticketNumber = await generateUniqueTicketNumber(mondayAuthorization);
@@ -136,20 +56,10 @@ export const invoke = async ({ payload }) => {
     link_mm4z30wa: pageUrl ? { url: pageUrl, text: pageUrl } : undefined,
     color_mm4zzdme: { index: 7 },
     color_mm4ze6f3: { label: urgency },
-    [TICKET_NUMBER_COLUMN_ID]: String(ticketNumber),
-    [TOPIC_COLUMN_ID]: dropdownValue(issueSubject, TOPIC_LABEL_IDS),
-    [SUBTOPIC_COLUMN_ID]: dropdownValue(subtopic, SUBTOPIC_LABEL_IDS),
-    [TOPIC_DETAIL_COLUMN_ID]: dropdownValue(topicDetail, TOPIC_DETAIL_LABEL_IDS),
-    [SOURCE_COLUMN_ID]: SOURCE_VALUE
+    [TICKET_NUMBER_COLUMN_ID]: String(ticketNumber)
   });
 
-  const itemName = buildItemName({
-    topic: issueSubject,
-    subtopic,
-    officeName,
-    customerName,
-    fallbackId: payload?.submissionId
-  });
+  const itemName = issueSubject || customerName || payload?.submissionId || 'Service request';
   const query = `
     mutation CreateServiceTicket($boardId: ID!, $groupId: String!, $itemName: String!, $columnValues: JSON!) {
       create_item(
@@ -203,8 +113,6 @@ export const invoke = async ({ payload }) => {
       urgency,
       ticketNumber,
       issueSubject,
-      subtopic,
-      topicDetail,
       issueDetails,
       pageUrl
     }
@@ -397,8 +305,6 @@ async function sendSupportNotificationEmailSafely(
     urgency,
     ticketNumber,
     issueSubject,
-    subtopic,
-    topicDetail,
     issueDetails,
     pageUrl,
     contactId,
@@ -426,8 +332,6 @@ async function sendSupportNotificationEmailSafely(
         wixSubmissionId: String(wixSubmissionId || ''),
         phone: customerPhone || notProvided,
         issueSubject: issueSubject || notProvided,
-        subtopic: subtopic || notProvided,
-        topicDetail: topicDetail || notProvided,
       }
     });
     return { status: 'sent' };
@@ -810,39 +714,6 @@ function pickField(fields, labels) {
     }
   }
   return '';
-}
-
-/**
- * Maps a submitted list value to its Monday dropdown label id.
- * Returns undefined for empty or unrecognized values so `removeEmptyValues`
- * drops the column instead of writing an invalid label.
- */
-function dropdownValue(submittedLabel, labelIds) {
-  const normalizedSubmitted = normalizeLabel(submittedLabel);
-  if (!normalizedSubmitted) {
-    return undefined;
-  }
-
-  for (const [label, id] of Object.entries(labelIds)) {
-    if (normalizeLabel(label) === normalizedSubmitted) {
-      return { ids: [id] };
-    }
-  }
-
-  return undefined;
-}
-
-/**
- * Item name per developer field spec v1.2 section 04: topic, subtopic and office
- * joined with a middle dot. Falls back to the previous single-value behaviour
- * when the extra classification fields are absent.
- */
-function buildItemName({ topic, subtopic, officeName, customerName, fallbackId }) {
-  const parts = [topic, subtopic, officeName].filter(Boolean);
-  if (parts.length > 1) {
-    return parts.join(' · ');
-  }
-  return topic || customerName || fallbackId || 'Service request';
 }
 
 function normalizeLabel(value) {

@@ -1,0 +1,168 @@
+/**
+ * Wix Velo BACKEND web module for the /support page.
+ *
+ * Why this file exists
+ * --------------------
+ * The two-level topic tree in developer field spec v1.2 needs a dependent
+ * dropdown, which the native Wix Forms element does not do. So the page is
+ * built from individual Wix elements driven by `support_page.js`.
+ *
+ * The submission itself is still handed to Wix Forms through the Form
+ * Submissions API. That is the whole point of this module: the existing Wix
+ * Automation stays wired to "form submitted", so it keeps firing, keeps
+ * creating the contact, keeps sending the customer confirmation
+ * (triggered email VPeL0Z3) and the internal notification, and keeps running
+ * monday_ticket.js as its action with the payload shape it already reads.
+ *
+ * Nothing in this file talks to Monday and nothing here reads MONDAY_API_KEY.
+ * The Monday call stays where it is, in the automation action.
+ *
+ * VERIFY BEFORE RELYING ON THIS (see docs/wix_editor_instructions.md, step 7):
+ * a submission created through the API must actually fire the site automation.
+ * Confirm that with one test submission before switching the live page over.
+ */
+
+import { Permissions, webMethod } from 'wix-web-module';
+import { auth } from '@wix/essentials';
+import { submissions } from '@wix/forms';
+
+/**
+ * The Wix Forms form that backs /support.
+ * TODO(editor): paste the form id from the Wix editor. Forms > your form >
+ * the id appears in the URL of the form's settings panel.
+ */
+const SUPPORT_FORM_ID = '';
+
+/**
+ * Form field keys, NOT labels.
+ * The Form Submissions API keys values by field key, so these must match the
+ * keys on the Wix Forms form exactly.
+ * TODO(editor): fill each one from the editor (field > settings > field key).
+ */
+const FIELD_KEYS = {
+  fullName: '',
+  officeName: '',
+  email: '',
+  phone: '',
+  topic: '',
+  subtopic: '',
+  topicDetail: '',
+  screenUrl: '',
+  description: ''
+};
+
+/**
+ * Maps a page label to the field key used by the form.
+ * The page sends the spec v1.2 labels; the conditional follow-up field arrives
+ * under one of three per-topic labels, all of which mean topicDetail.
+ */
+const LABEL_TO_KEY = {
+  'שם מלא': 'fullName',
+  'שם המשרד': 'officeName',
+  'מייל': 'email',
+  'טלפון': 'phone',
+  'נושא הבעיה': 'topic',
+  'תת-נושא': 'subtopic',
+  'קישור למסך שבו נתקלתם בבעיה (URL)': 'screenUrl',
+  'תיאור התקלה': 'description',
+  'יצרן / סוג הקובץ': 'topicDetail',
+  'איזה דוח?': 'topicDetail',
+  'סוג הנכס (ללא שם הלקוח)': 'topicDetail'
+};
+
+const REQUIRED_FIELDS = ['fullName', 'officeName', 'email', 'phone', 'topic', 'description'];
+
+/**
+ * Creates the support ticket submission.
+ *
+ * @param {{submissions: Array<{label: string, value: string}>}} formData
+ *   Label/value pairs as collected by support_page.js.
+ * @returns {Promise<{submissionId: string}>}
+ */
+export const openServiceTicket = webMethod(
+  Permissions.Anyone,
+  async (formData) => {
+    assertConfigured();
+
+    const values = toFieldValues(formData);
+    assertRequiredPresent(values);
+
+    // Server-side revalidation: the page already validates, but the page is
+    // client code and can be bypassed. Never trust it as the only gate.
+    assertValid(values);
+
+    const submissionValues = {};
+    for (const [key, value] of Object.entries(values)) {
+      const fieldKey = FIELD_KEYS[key];
+      if (fieldKey && value !== '') {
+        submissionValues[fieldKey] = value;
+      }
+    }
+
+    // Elevated: a site visitor is anonymous and has no permission to create a
+    // submission on their own behalf.
+    const createSubmission = auth.elevate(submissions.createSubmission);
+    const created = await createSubmission({
+      formId: SUPPORT_FORM_ID,
+      submissions: submissionValues
+    });
+
+    const submissionId = created?.submission?._id || created?._id || '';
+    if (!submissionId) {
+      throw new Error('Wix Forms did not return a submission id');
+    }
+
+    return { submissionId };
+  }
+);
+
+function assertConfigured() {
+  if (!SUPPORT_FORM_ID) {
+    throw new Error('SUPPORT_FORM_ID is not set in backend/support.jsw');
+  }
+
+  const unset = Object.entries(FIELD_KEYS)
+    .filter(([, fieldKey]) => !fieldKey)
+    .map(([name]) => name);
+
+  if (unset.length > 0) {
+    throw new Error(`FIELD_KEYS is missing values for: ${unset.join(', ')}`);
+  }
+}
+
+function toFieldValues(formData) {
+  const entries = Array.isArray(formData?.submissions) ? formData.submissions : [];
+  const values = {};
+
+  for (const entry of entries) {
+    const label = String(entry?.label || '').replace(/[:：]\s*$/g, '').trim();
+    const key = LABEL_TO_KEY[label];
+    if (key) {
+      values[key] = String(entry?.value ?? '').trim();
+    }
+  }
+
+  return values;
+}
+
+function assertRequiredPresent(values) {
+  const missing = REQUIRED_FIELDS.filter((field) => !values[field]);
+  if (missing.length > 0) {
+    throw new Error(`Submission is missing required fields: ${missing.join(', ')}`);
+  }
+}
+
+function assertValid(values) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) {
+    throw new Error('Submission email is not a valid address');
+  }
+
+  const phoneDigits = String(values.phone).replace(/\D/g, '');
+  if (phoneDigits.length < 9 || phoneDigits.length > 10) {
+    throw new Error('Submission phone must contain 9 to 10 digits');
+  }
+
+  if (String(values.description).length < 20) {
+    throw new Error('Submission description must be at least 20 characters');
+  }
+}
