@@ -12,7 +12,6 @@ const TOPIC_DETAIL_COLUMN_ID = 'dropdown_mm5q9dm4';
 const SOURCE_COLUMN_ID = 'text_mm5qwrmt';
 const DESCRIPTION_COLUMN_ID = 'long_text_mm4z5fr0';
 const URL_COLUMN_ID = 'link_mm4z30wa';
-const SUPPORT_CONTACT_ID = 'support-contact-456';
 
 function mondayResponse(data) {
   return {
@@ -22,9 +21,7 @@ function mondayResponse(data) {
   };
 }
 
-function loadAutomation({
-  supportContacts = [{ _id: SUPPORT_CONTACT_ID }]
-} = {}) {
+function loadAutomation() {
   let source = fs.readFileSync(SOURCE_PATH, 'utf8');
   source = source
     .replace(/^import .*;\s*$/gm, '')
@@ -34,8 +31,7 @@ function loadAutomation({
   `;
 
   const createCalls = [];
-  const emailCalls = [];
-  const contactQueryCalls = [];
+  const supportTriggerCalls = [];
 
   const fetch = async (_url, options) => {
     const request = JSON.parse(options.body);
@@ -68,30 +64,13 @@ function loadAutomation({
     console: { log() {}, error() {} },
     fetch,
     getSecret: async () => 'test-token',
-    contacts: {
-      queryContacts() {
-        const queryState = {};
-        const builder = {
-          eq(field, value) {
-            queryState.field = field;
-            queryState.value = value;
-            return builder;
-          },
-          limit(value) {
-            queryState.limit = value;
-            return builder;
-          },
-          async find(options) {
-            contactQueryCalls.push({ ...queryState, options });
-            return { items: supportContacts };
-          }
-        };
-        return builder;
+    triggeredEmails: { emailContact: async () => {} },
+    customTrigger: {
+      runTrigger: async (options) => {
+        supportTriggerCalls.push(options);
       }
     },
-    triggeredEmails: {
-      emailContact: async (...args) => emailCalls.push(args)
-    },
+    auth: { elevate: (fn) => fn },
     Math: math
   };
   vm.createContext(context);
@@ -100,8 +79,7 @@ function loadAutomation({
   return {
     invoke: context.__ticketAutomation.invoke,
     createCalls,
-    emailCalls,
-    contactQueryCalls
+    supportTriggerCalls
   };
 }
 
@@ -149,7 +127,8 @@ async function createdColumnsFor(payload) {
   assert.equal(automation.createCalls.length, 1);
   return {
     columns: JSON.parse(automation.createCalls[0].columnValues),
-    itemName: automation.createCalls[0].itemName
+    itemName: automation.createCalls[0].itemName,
+    supportTriggerCalls: automation.supportTriggerCalls
   };
 }
 
@@ -286,40 +265,17 @@ test('tolerates label whitespace and a trailing colon from the Wix editor', asyn
   assert.deepEqual(columns[SUBTOPIC_COLUMN_ID], { ids: [6] });
 });
 
-test('still sends the internal support email (VPlEpoP) for spec payloads, without the classification fields', async () => {
-  const automation = loadAutomation();
+test('passes the classification fields to the support notification automation', async () => {
+  const { supportTriggerCalls } = await createdColumnsFor(specPayload());
 
-  await automation.invoke({ payload: specPayload() });
+  assert.equal(supportTriggerCalls.length, 1);
+  assert.equal(supportTriggerCalls[0].payload.subtopic, 'נתון שגוי בדוח');
+  assert.equal(supportTriggerCalls[0].payload.topicDetail, 'דוח תקופתי');
+});
 
-  assert.equal(automation.emailCalls.length, 2);
-  const customerEmailCall = automation.emailCalls.find((call) => call[0] === 'VPeL0Z3');
-  const supportEmailCall = automation.emailCalls.find((call) => call[0] === 'VPlEpoP');
+test('reports the follow-up fields as not provided when the form omits them', async () => {
+  const { supportTriggerCalls } = await createdColumnsFor(legacyPayload());
 
-  assert.ok(customerEmailCall);
-  assert.equal(customerEmailCall[1], 'contact-123');
-  assert.ok(supportEmailCall);
-  assert.equal(supportEmailCall[1], SUPPORT_CONTACT_ID);
-
-  const supportVariables = supportEmailCall[2].variables;
-  const expectedVariableKeys = [
-    'ticketNumber',
-    'issueSubject',
-    'customerName',
-    'customerEmail',
-    'customerPhone',
-    'officeName',
-    'urgency',
-    'issueDetails',
-    'pageUrl',
-    'SITE_URL'
-  ].sort();
-  assert.deepEqual(Object.keys(supportVariables).sort(), expectedVariableKeys);
-  assert.equal('subtopic' in supportVariables, false);
-  assert.equal('topicDetail' in supportVariables, false);
-
-  assert.equal(automation.contactQueryCalls.length, 1);
-  assert.equal(automation.contactQueryCalls[0].field, 'primaryInfo.email');
-  assert.equal(automation.contactQueryCalls[0].value, 'supportclient@plan-t.org.il');
-  assert.equal(automation.contactQueryCalls[0].limit, 2);
-  assert.equal(automation.contactQueryCalls[0].options.suppressAuth, true);
+  assert.equal(supportTriggerCalls[0].payload.subtopic, 'לא נמסר');
+  assert.equal(supportTriggerCalls[0].payload.topicDetail, 'לא נמסר');
 });

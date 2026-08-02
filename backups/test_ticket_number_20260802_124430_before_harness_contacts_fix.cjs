@@ -6,7 +6,7 @@ const vm = require('node:vm');
 
 const SOURCE_PATH = path.resolve(__dirname, '..', 'monday_ticket.js');
 const TICKET_NUMBER_COLUMN_ID = 'numeric_mm59qx9e';
-const SUPPORT_EMAIL = 'supportclient@plan-t.org.il';
+const SUPPORT_AUTOMATION_TRIGGER_ID = 'f6af7c3c-a858-4b7c-97a0-8e4ea8db3206';
 const CUSTOMER_TRIGGERED_EMAIL_ID = 'VPeL0Z3';
 const SUPPORT_TRIGGERED_EMAIL_ID = 'VPlEpoP';
 const SUPPORT_CONTACT_ID = 'support-contact-456';
@@ -31,7 +31,7 @@ function randomForTicketNumber(ticketNumber) {
 function loadAutomation({
   ticketNumberPages = [[]],
   randomValues = [0],
-  supportContacts = [{ _id: SUPPORT_CONTACT_ID }],
+  supportTriggerError = null,
   availableWixModules = null
 } = {}) {
   let source = fs.readFileSync(SOURCE_PATH, 'utf8');
@@ -152,36 +152,28 @@ function loadAutomation({
     console: { log() {}, error() {} },
     fetch,
     getSecret: async () => 'test-token',
-    contacts: {
-      queryContacts() {
-        const queryState = {};
-        const builder = {
-          eq(field, value) {
-            queryState.field = field;
-            queryState.value = value;
-            return builder;
-          },
-          limit(value) {
-            queryState.limit = value;
-            return builder;
-          },
-          async find(options) {
-            contactQueryCalls.push({ ...queryState, options });
-            return { items: supportContacts };
-          }
-        };
-        return builder;
-      }
-    },
     triggeredEmails: {
       emailContact: async (...args) => emailCalls.push(args)
+    },
+    customTrigger: {
+      runTrigger: async (options) => {
+        supportTriggerCalls.push(options);
+        if (supportTriggerError) {
+          throw supportTriggerError;
+        }
+      }
+    },
+    auth: {
+      elevate: (fn) => fn
     },
     Math: math
   };
   context.__wixModules = {
     'wix-fetch': { fetch },
     'wix-secrets-backend': { getSecret: context.getSecret },
-    'wix-crm-backend': { contacts, triggeredEmails: context.triggeredEmails }
+    'wix-crm-backend': { contacts, triggeredEmails: context.triggeredEmails },
+    '@wix/automations': { customTrigger: context.customTrigger },
+    '@wix/essentials': { auth: context.auth }
   };
   vm.createContext(context);
   new vm.Script(source, { filename: SOURCE_PATH }).runInContext(context);
@@ -274,37 +266,37 @@ test('stores and emails the same eight-digit ticket number', async () => {
   assert.equal(automation.operationCalls.includes('set_ticket_number'), false);
 });
 
-test('sends the same ticket number to the customer and support email templates', async () => {
+test('sends the same Monday ticket number to the customer email and support automation', async () => {
   const automation = loadAutomation({ randomValues: [0] });
 
   await automation.invoke({ payload: formPayload() });
 
-  assert.equal(automation.emailCalls.length, 2);
-  const customerEmailCall = automation.emailCalls.find((call) => call[0] === 'VPeL0Z3');
-  const supportEmailCall = automation.emailCalls.find((call) => call[0] !== 'VPeL0Z3');
+  assert.equal(automation.emailCalls.length, 1);
+  assert.equal(automation.supportTriggerCalls.length, 1);
+  const customerEmailCall = automation.emailCalls[0];
+  const supportTriggerCall = automation.supportTriggerCalls[0];
 
-  assert.ok(customerEmailCall);
-  assert.ok(supportEmailCall);
-  assert.equal(supportEmailCall[0], 'VPlEpoP');
-  assert.equal(supportEmailCall[1], SUPPORT_CONTACT_ID);
-  assert.notEqual(supportEmailCall[1], customerEmailCall[1]);
+  assert.equal(customerEmailCall[0], 'VPeL0Z3');
   assert.equal(customerEmailCall[2].variables.ticketNumber, '10000000');
-  assert.equal(supportEmailCall[2].variables.ticketNumber, '10000000');
-  assert.equal(supportEmailCall[2].variables.issueSubject, 'Password reset');
-  assert.equal(supportEmailCall[2].variables.customerName, 'Dana');
-  assert.equal(supportEmailCall[2].variables.customerEmail, 'dana@example.com');
-  assert.equal(supportEmailCall[2].variables.urgency, 'High');
-  assert.equal(automation.contactQueryCalls.length, 1);
-  assert.equal(automation.contactQueryCalls[0].field, 'primaryInfo.email');
-  assert.equal(automation.contactQueryCalls[0].value, SUPPORT_EMAIL);
-  assert.equal(automation.contactQueryCalls[0].limit, 2);
-  assert.equal(automation.contactQueryCalls[0].options.suppressAuth, true);
+  assert.equal(supportTriggerCall.triggerId, SUPPORT_AUTOMATION_TRIGGER_ID);
+  assert.equal(supportTriggerCall.payload.ticketNumber, 10000000);
+  assert.equal(supportTriggerCall.payload.issueSubject, 'Password reset');
+  assert.equal(supportTriggerCall.payload.customerName, 'Dana');
+  assert.equal(supportTriggerCall.payload.customerEmail, 'dana@example.com');
+  assert.equal(supportTriggerCall.payload.phone, '+972521234567');
+  assert.equal(supportTriggerCall.payload.officeName, 'Dana Finance');
+  assert.equal(supportTriggerCall.payload.urgency, 'High');
+  assert.equal(supportTriggerCall.payload.issueDetails, 'The reset link is expired.');
+  assert.equal(supportTriggerCall.payload.pageUrl, 'https://www.plan-t.org.il/support');
+  assert.equal(supportTriggerCall.payload.contactId, 'contact-123');
+  assert.equal(supportTriggerCall.payload.wixSubmissionId, 'submission-789');
+  assert.equal(supportTriggerCall.payload.submissionTime, '2026-07-19T08:15:00.000Z');
 });
 
-test('keeps the ticket and records an alert when the support contact cannot be resolved', async () => {
+test('keeps the ticket and records an alert when the support automation fails', async () => {
   const automation = loadAutomation({
     randomValues: [0],
-    supportContacts: []
+    supportTriggerError: new Error('Temporary Wix automation failure')
   });
 
   await automation.invoke({ payload: formPayload() });
@@ -312,6 +304,7 @@ test('keeps the ticket and records an alert when the support contact cannot be r
   assert.equal(automation.createCalls.length, 1);
   assert.equal(automation.emailCalls.length, 1);
   assert.equal(automation.emailCalls[0][0], 'VPeL0Z3');
+  assert.equal(automation.supportTriggerCalls.length, 1);
   assert.equal(
     automation.alertBodies.some((body) => body.includes('Support notification email was not sent automatically')),
     true
