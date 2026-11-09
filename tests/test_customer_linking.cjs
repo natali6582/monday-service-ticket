@@ -24,6 +24,13 @@ function loadCustomerLinkingCode() {
     console: { log() {}, error() {} },
     fetch: async () => { throw new Error('Unexpected fetch call'); },
     getSecret: async () => 'test-token',
+    contacts: {
+      getContact: async (_id) => ({
+        _id,
+        primaryInfo: { email: 'dana@example.com' },
+        info: { extendedFields: { 'emailSubscriptions.subscriptionStatus': 'NOT_SET' } }
+      })
+    },
     triggeredEmails: { emailContact: async () => {} },
     customTrigger: { runTrigger: async () => {} },
     auth: { elevate: (fn) => fn }
@@ -64,6 +71,7 @@ test('sends the published Wix email with the provided ticket number and customer
     '9000',
     {
       contactId: 'contact-123',
+      customerEmail: 'dana@example.com',
       customerName: 'Dana',
       ticketNumber: 15567173,
       issueSubject: 'Password reset'
@@ -98,6 +106,7 @@ test('keeps the ticket flow alive and adds a Monday update when email delivery f
     '9005',
     {
       contactId: 'contact-456',
+      customerEmail: 'dana@example.com',
       customerName: 'Dana',
       ticketNumber: 9005,
       issueSubject: 'Password reset'

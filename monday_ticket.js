@@ -183,6 +183,7 @@ export const invoke = async ({ payload }) => {
     createdItemId,
     {
       contactId: payload?.contactId,
+      customerEmail: email,
       customerName,
       ticketNumber,
       issueSubject
@@ -342,15 +343,13 @@ function addExistingTicketNumbers(ticketNumbers, items) {
 async function sendTicketConfirmationEmailSafely(
   mondayAuthorization,
   ticketItemId,
-  { contactId, customerName, ticketNumber, issueSubject },
+  { contactId, customerEmail, customerName, ticketNumber, issueSubject },
   emailContact = triggeredEmails.emailContact,
-  request = executeMondayRequest
+  request = executeMondayRequest,
+  contactsApi = contacts
 ) {
   try {
-    const wixContactId = String(contactId || '').trim();
-    if (!wixContactId) {
-      throw new Error('Wix form payload is missing contactId');
-    }
+    const wixContactId = await resolveReceiptContactId(contactId, customerEmail, contactsApi);
 
     await emailContact(TRIGGERED_EMAIL_ID, wixContactId, {
       variables: {
@@ -362,8 +361,10 @@ async function sendTicketConfirmationEmailSafely(
     });
     return { status: 'sent' };
   } catch (error) {
+    const reason = error?.receiptReason || 'RECEIPT_SEND_OR_LOOKUP_FAILED';
     console.error('Customer ticket confirmation email failed', {
       itemId: ticketItemId,
+      reason,
       error: error?.message || String(error)
     });
 
@@ -371,7 +372,7 @@ async function sendTicketConfirmationEmailSafely(
       await createCustomerLinkAlert(
         mondayAuthorization,
         ticketItemId,
-        'Customer confirmation email was not sent automatically. Please send it manually and include the Monday ticket number.',
+        `Customer confirmation email was not sent automatically (${reason}). Please review the submitted address and email permissions before any manual action. Do not change subscription preferences or resend automatically.`,
         request
       );
     } catch (alertError) {
@@ -383,6 +384,67 @@ async function sendTicketConfirmationEmailSafely(
 
     return { status: 'failed' };
   }
+}
+
+async function resolveReceiptContactId(contactId, customerEmail, contactsApi) {
+  const expectedEmail = normalizeEmail(customerEmail).toLowerCase();
+  if (!expectedEmail) {
+    throw receiptRecipientError('RECEIPT_SUBMITTED_EMAIL_INVALID');
+  }
+  const triggerContactId = String(contactId || '').trim();
+  if (!triggerContactId) {
+    throw receiptRecipientError('RECEIPT_CONTACT_ID_MISSING');
+  }
+
+  const triggerContact = await contactsApi.getContact(triggerContactId, { suppressAuth: true });
+  if (String(triggerContact?.primaryInfo?.email || '').trim().toLowerCase() === expectedEmail) {
+    return checkedReceiptContactId(triggerContact, expectedEmail);
+  }
+
+  // A secondary email or a phone match does not identify the emailContact recipient.
+  // Resolve an existing primary address; never rewrite contacts or create duplicates.
+  const result = await contactsApi.queryContacts()
+    .eq('primaryInfo.email', expectedEmail)
+    .limit(2)
+    .find({ suppressAuth: true });
+  const candidates = result?.items || [];
+  if (candidates.length !== 1) {
+    throw receiptRecipientError(candidates.length === 0
+      ? 'RECEIPT_RECIPIENT_NOT_FOUND'
+      : 'RECEIPT_RECIPIENT_AMBIGUOUS');
+  }
+  const candidateId = String(candidates[0]?._id || '').trim();
+  if (!candidateId) {
+    throw receiptRecipientError('RECEIPT_CONTACT_ID_MISSING');
+  }
+  // Re-read after the query: an ID may have merged into a different contact.
+  const recipient = await contactsApi.getContact(candidateId, { suppressAuth: true });
+  return checkedReceiptContactId(recipient, expectedEmail);
+}
+
+function checkedReceiptContactId(contact, expectedEmail) {
+  const primaryEmail = String(contact?.primaryInfo?.email || '').trim().toLowerCase();
+  const fields = contact?.info?.extendedFields || {};
+  const effectiveEmail = String(fields['emailSubscriptions.effectiveEmail'] || '').trim().toLowerCase();
+  if (primaryEmail !== expectedEmail || (effectiveEmail && effectiveEmail !== expectedEmail)) {
+    throw receiptRecipientError('RECEIPT_RECIPIENT_MISMATCH');
+  }
+  const subscriptionStatus = fields['emailSubscriptions.subscriptionStatus'];
+  if (subscriptionStatus === 'UNSUBSCRIBED') {
+    throw receiptRecipientError('RECEIPT_SUBSCRIPTION_BLOCKED');
+  }
+  // All other subscription and delivery states retain emailContact's existing enforcement.
+  const recipientId = String(contact?._id || '').trim();
+  if (!recipientId) {
+    throw receiptRecipientError('RECEIPT_CONTACT_ID_MISSING');
+  }
+  return recipientId;
+}
+
+function receiptRecipientError(reason) {
+  const error = new Error(reason);
+  error.receiptReason = reason;
+  return error;
 }
 
 async function sendSupportNotificationEmailSafely(

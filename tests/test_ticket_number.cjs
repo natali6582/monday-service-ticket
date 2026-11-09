@@ -129,6 +129,11 @@ function loadAutomation({
   };
 
   const contacts = {
+    getContact: async (_id) => ({
+      _id,
+      primaryInfo: { email: 'dana@example.com' },
+      info: { extendedFields: { 'emailSubscriptions.subscriptionStatus': 'NOT_SET' } }
+    }),
     queryContacts: () => {
       const query = {
         eq: (...args) => {
@@ -153,6 +158,7 @@ function loadAutomation({
     fetch,
     getSecret: async () => 'test-token',
     contacts: {
+      getContact: contacts.getContact,
       queryContacts() {
         const queryState = {};
         const builder = {
