@@ -166,6 +166,23 @@ test('writes topic, subtopic and detail as Monday dropdown label ids', async () 
   assert.deepEqual(columns[TOPIC_DETAIL_COLUMN_ID], { ids: [5] });
 });
 
+test('creates tickets with the current Monday urgency indexes', async () => {
+  const cases = [
+    { fields: [], expected: 19 },
+    { fields: [{ label: 'דחיפות הפנייה', value: 'רגיל' }], expected: 19 },
+    { fields: [{ label: 'Urgency', value: 'Medium' }], expected: 19 },
+    { fields: [{ label: 'Urgency', value: 'High' }], expected: 19 },
+    { fields: [{ label: 'Urgency', value: 'Low' }], expected: 19 },
+    { fields: [{ label: 'דחיפות הפנייה', value: 'קריטי' }], expected: 2 },
+    { fields: [{ label: 'Urgency', value: 'Critical' }], expected: 2 }
+  ];
+
+  for (const { fields, expected } of cases) {
+    const { columns } = await createdColumnsFor(specPayload(fields));
+    assert.deepEqual(columns.color_mm4ze6f3, { index: expected }, fields[0]?.value || 'no urgency field');
+  }
+});
+
 test('keeps writing the legacy free-text topic column alongside the dropdown', async () => {
   const { columns } = await createdColumnsFor(specPayload());
 

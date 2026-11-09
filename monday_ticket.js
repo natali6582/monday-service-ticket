@@ -134,7 +134,7 @@ export const invoke = async ({ payload }) => {
     long_text_mm4z5fr0: issueDetails ? { text: issueDetails } : undefined,
     link_mm4z30wa: pageUrl ? { url: pageUrl, text: pageUrl } : undefined,
     color_mm4zzdme: { index: 7 },
-    color_mm4ze6f3: { label: urgency },
+    color_mm4ze6f3: { index: urgency === 'Critical' ? 2 : 19 },
     [TICKET_NUMBER_COLUMN_ID]: String(ticketNumber),
     [TOPIC_COLUMN_ID]: dropdownValue(issueSubject, TOPIC_LABEL_IDS),
     [SUBTOPIC_COLUMN_ID]: dropdownValue(subtopic, SUBTOPIC_LABEL_IDS),
