@@ -86,10 +86,16 @@ follow-up field, per developer field spec v1.2 section 03. Values are written to
 Monday by dropdown label id rather than by string, so renaming a label on the
 board cannot silently drop the value.
 
-- `נושא` - `dropdown_mm5qsryr` (10 labels)
+- `נושא` - `dropdown_mm5qsryr` (11 labels)
 - `תת-נושא` - `dropdown_mm5q7p43` (28 labels)
 - `פירוט נושא` - `dropdown_mm5q9dm4` (12 labels)
 - `מקור` - `text_mm5qwrmt`, constant `support page`
+
+The Wix support form offers `סוכני AI` as a main topic. The page hides the
+subtopic and detail fields for this choice. In the Wix Forms schema,
+`form_field_8` includes `סוכני AI` in both its dropdown choices and allowed
+values. The Monday action maps it to label ID 11. The Make reply scenarios
+match messages by ticket number and accept this topic without a filter change.
 
 The action accepts both the spec v1.2 field labels and the labels the live form
 sends today, so labels can be renamed in the editor without a breaking window.

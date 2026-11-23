@@ -111,6 +111,31 @@ test('Correct mapping: one ticket, two emails',async()=>{
   assert.equal(item.name,'פורטל לקוחות · לקוח קצה לא מצליח להתחבר · משרד בדיקה');
   assert.match(String(item.number),/^\d{8}$/);assert.equal((await e.helper.getDispatch('test-submission-001',e.data)).status,'completed');
 });
+test('AI topic maps to Monday label 11 with no subtopic or detail', async () => {
+  const state = await environment();
+  const input = payload('support-ai-topic-test');
+  input.submissions = input.submissions.filter(field => field.label !== 'תת-נושא');
+  input.submissions.find(field => field.label === 'נושא הבעיה').value = 'סוכני AI';
+
+  await state.invoke({ payload: input });
+
+  assert.equal(state.items.size, 1);
+  const item = [...state.items.values()][0];
+  assert.deepEqual(item.columns.dropdown_mm5qsryr, { ids: [11] });
+  assert.equal(item.columns.text_mm4zj908, 'סוכני AI');
+  assert.equal(Object.hasOwn(item.columns, 'dropdown_mm5q7p43'), false);
+  assert.equal(Object.hasOwn(item.columns, 'dropdown_mm5q9dm4'), false);
+  assert.deepEqual(item.columns.color_mm4zzdme, { index: 7 });
+  assert.deepEqual(item.columns.color_mm4ze6f3, { index: 19 });
+  assert.equal(item.name, 'סוכני AI · משרד בדיקה');
+  const creation = state.requests.find(request => request.query.includes('mutation CreateServiceTicket'));
+  assert.equal(creation.variables.boardId, 5099744321);
+  assert.equal(creation.variables.groupId, 'group_mm4zp44x');
+  assert.equal(state.emails.length, 2);
+  for (const email of state.emails) {
+    assert.equal(email.options.variables.issueSubject, 'סוכני AI');
+  }
+});
 test('Eight sequential invocations: one item and one set of effects',async()=>{
   const e=await environment();for(let i=0;i<8;i++)await e.invoke({payload:payload()});
   assert.equal(e.items.size,1);assert.equal(e.emails.length,2);assert.equal(e.alerts.length,1);

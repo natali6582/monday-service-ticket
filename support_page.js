@@ -149,6 +149,11 @@ const TOPICS = [
     detail: null
   },
   {
+    name: 'סוכני AI',
+    subs: [],
+    detail: null
+  },
+  {
     name: 'אחר',
     subs: ['אחר'],
     detail: null
@@ -351,8 +356,13 @@ function applyTopicSelection() {
 
   $w('#dropdownSubtopic').options = optionsFrom(topic.subs);
   $w('#dropdownSubtopic').value = undefined;
-  setSubtopicRequired(true);
-  expand('#dropdownSubtopic');
+  if (topic.subs.length > 0) {
+    setSubtopicRequired(true);
+    expand('#dropdownSubtopic');
+  } else {
+    setSubtopicRequired(false);
+    collapse('#dropdownSubtopic');
+  }
 
   if (topic.detail) {
     $w('#dropdownDetail').options = optionsFrom(topic.detail.options);
